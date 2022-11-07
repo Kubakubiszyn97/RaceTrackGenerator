@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace MeshGeneration
 {
-    class PathPoint
+    public class PathPoint
     {
         #region Constructors
         public PathPoint(Vector3 position) : this(position, Quaternion.identity, Vector3.zero) { }

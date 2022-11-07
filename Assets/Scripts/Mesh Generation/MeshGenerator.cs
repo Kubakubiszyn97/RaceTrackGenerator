@@ -12,11 +12,12 @@ namespace MeshGeneration
     public class MeshGenerator : MonoBehaviour
     {
         [Space(5), Header("PathSettings")]
-        [SerializeField] int pointsPerSegment;
-        [SerializeField] float startAngle;
-        [SerializeField] float endAngle;
-        [SerializeField] float trackRadius;
-        [SerializeField] float numberOfSegments;
+        [SerializeField, Range(0, 15)] int pointsPerSegment = 10;
+        [SerializeField, Range(1, 20)] int verticiesPerStep = 10;
+        [SerializeField, Range(.01f, .5f)] float totalSegmentTransitionDistance = .1f;
+        [SerializeField] List<TrackSegment> segments;
+
+        [Space(5), Header("Settings")]
         [SerializeField] string objectName;
         [SerializeField] Material defaultTrackMaterial;
 
@@ -26,7 +27,12 @@ namespace MeshGeneration
 
         PathCreator pathCreator;
         List<Vector3> verticies = new();
-        List<PathPoint> pathPoints = new ();
+        List<PathPoint> pathPoints = new();
+        Dictionary<SegmentType, ITrackSegmentGenerator> generatorLookup;
+
+        public PathCreator PathCreator => pathCreator;
+        public int SegmentStep => pointsPerSegment;
+        public int VerticiesPerStep => verticiesPerStep;
 
         private void Start()
         {
@@ -37,16 +43,45 @@ namespace MeshGeneration
         public void GenerateTrack()
         {
             var createdMesh = CreateNewObject(objectName);
-            GetPathPoints();
-            CrateVerticies();
+            GeneratePath();
             CreateTrackMesh(createdMesh);
             AddCollider(createdMesh.gameObject);
         }
 
         public void PreviewTrack()
         {
-            GetPathPoints();
-            CrateVerticies();
+            GeneratePath();
+        }
+
+        void GeneratePath()
+        {
+            InitializeSegments();
+            pathPoints.Clear();
+            verticies.Clear();
+            if (generatorLookup == null)
+                    generatorLookup = new();
+            
+            foreach (var segment in segments)
+            {
+                ITrackSegmentGenerator generator = GetSegmentGenerator(segment.segmentType);
+                generator.Generate(segment, pathPoints, verticies);
+            }
+        }
+
+        ITrackSegmentGenerator GetSegmentGenerator(SegmentType type)
+        {
+            if (generatorLookup.TryGetValue(type, out ITrackSegmentGenerator generator))
+            {
+                return generator;
+            }
+
+            generator = SegmentGeneratorBase.Factory.CrateGenerator(type, this);
+            if (generator == null)
+            {
+                Debug.LogError($"SegmentGenerator for {type} does not exist");
+            }
+            generatorLookup[type] = generator;
+            return generator;
         }
 
         MeshFilter CreateNewObject(string gameObjectName)
@@ -73,22 +108,22 @@ namespace MeshGeneration
             var verts = verticies.ToArray();
             mesh.vertices = verts;
 
-            var squaresPerSegment = pointsPerSegment - 1;
+            var squaresPerSegment = verticiesPerStep - 1;
             var triangles = new List<int>();
 
             for (int i = 0; i < pathPoints.Count - 1; i++)
             {
                 for (int j = 0; j < squaresPerSegment; j++)
                 {
-                    var firstSegmentVertex = i * pointsPerSegment + j;
+                    var firstSegmentVertex = i * verticiesPerStep + j;
                     //lowerSquare
                     triangles.Add(firstSegmentVertex);
-                    triangles.Add(firstSegmentVertex + pointsPerSegment);
+                    triangles.Add(firstSegmentVertex + VerticiesPerStep);
                     triangles.Add(firstSegmentVertex + 1);
 
                     //upperSquare
-                    triangles.Add(firstSegmentVertex + pointsPerSegment);
-                    triangles.Add(firstSegmentVertex + pointsPerSegment + 1);
+                    triangles.Add(firstSegmentVertex + VerticiesPerStep);
+                    triangles.Add(firstSegmentVertex + verticiesPerStep + 1);
                     triangles.Add(firstSegmentVertex + 1);
                 }
             }
@@ -99,53 +134,6 @@ namespace MeshGeneration
             meshFilter.mesh = mesh;
         }
 
-        void CrateVerticies()
-        {
-            verticies = new List<Vector3>();
-            foreach (var point in pathPoints) CreateVerticiesForPoint(point);
-        }
-
-        void CreateVerticiesForPoint(PathPoint point)
-        {
-            var step = (endAngle - startAngle) / (pointsPerSegment - 1);
-            for (int i = 0; i < pointsPerSegment; i++)
-            {
-                var angle = startAngle + step * i;
-                var radAngle = angle * Mathf.Deg2Rad;
-                var newPoint = new Vector3(trackRadius * Mathf.Cos(radAngle), trackRadius * Mathf.Sin(radAngle));
-                var transformedPoint = TransformPoint(point, newPoint);
-                verticies.Add(transformedPoint);
-            }
-        }
-
-        Vector3 TransformPoint(PathPoint point, Vector3 pointToTransform)
-        {
-            return point.position + point.rotation * Vector3.Scale(transform.lossyScale, pointToTransform);
-        }
-
-        private void GetPathPoints()
-        {
-            pathPoints.Clear();
-            verticies.Clear();
-            var delta = 1f / (numberOfSegments - 1);
-
-            for (int i = 0; i < numberOfSegments; i++)
-            {
-                var currentDist = Mathf.Clamp01(i * delta);
-                CreatePathPointAtDisctance(currentDist);
-            }
-        }
-
-        private void CreatePathPointAtDisctance(float currentDist)
-        {
-            var position = pathCreator.path.GetPointAtTime(currentDist, EndOfPathInstruction.Stop);
-            var normal = pathCreator.path.GetNormal(currentDist, EndOfPathInstruction.Stop);
-            var rotation = pathCreator.path.GetRotation(currentDist, EndOfPathInstruction.Stop);
-
-            var pathPoint = new PathPoint(position, rotation, normal);
-            pathPoints.Add(pathPoint);
-        }
-
         private Vector2[] CalculateUVs()
         {
             var uvs = new Vector2[verticies.Count];
@@ -153,13 +141,27 @@ namespace MeshGeneration
             for (int i = 0; i < pathPoints.Count; i++)
             {
                 var vCord = (float)i / (pathPoints.Count - 1);
-                for (int j = 0; j < pointsPerSegment; j++)
+                for (int j = 0; j < verticiesPerStep; j++)
                 {
-                    var uCord = (float)j / (pointsPerSegment - 1);
+                    var uCord = (float)j / (verticiesPerStep - 1);
                     uvs[index++] = new Vector2(uCord, vCord);
                 }
             }
             return uvs;
+        }
+
+        private void InitializeSegments()
+        {
+            if (segments.Count == 0) return;
+            float singleSegmentTransitionDistance = totalSegmentTransitionDistance / (segments.Count - 1);
+            float segmentLength = (1 - totalSegmentTransitionDistance) / segments.Count;
+
+            for (int i = 0; i < segments.Count; i++)
+            {
+                var segmentStart = i == 0 ? 0 : i * segmentLength + singleSegmentTransitionDistance;
+                segments[i].segmentStart = segmentStart;
+                segments[i].segmentEnd = segmentStart + segmentLength;
+            }
         }
 
         private void AddCollider(GameObject mesh) 

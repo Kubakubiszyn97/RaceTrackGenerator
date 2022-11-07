@@ -79,9 +79,9 @@ MonoBehaviour:
       - 0
       - 0
       - 0
-      globalNormalsAngle: 0
+      globalNormalsAngle: 80
       flipNormals: 0
-    vertexPathUpToDate: 1
+    vertexPathUpToDate: 0
     vertexPathMaxAngleError: 0.3
     vertexPathMinVertexSpacing: 0.01
     showTransformTool: 1
@@ -114,12 +114,24 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 123343a3816a7cb41bf02d13ce449105, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  pointsPerSegment: 10
-  startAngle: 180
-  endAngle: 360
-  trackRadius: 1
-  numberOfSegments: 100
+  segmentStep: 15
+  verticiesPerStep: 10
+  totalSegmentTransitionDistance: 0.1
+  segments:
+  - segmentStart: 0
+    segmentEnd: 0.45
+    segmentType: 0
+    size: 2
+    startAngle: 180
+    endAngle: 360
+  - segmentStart: 0.55
+    segmentEnd: 1
+    segmentType: 1
+    size: 1
+    startAngle: 180
+    endAngle: 360
   objectName: Track 1
   defaultTrackMaterial: {fileID: 2100000, guid: e3befb7384bc9d24ebdcca50a2efd001,
     type: 2}
   showPoints: 0
+  pointsGizmosSize: 0.1
